@@ -127,7 +127,7 @@
       user-select: all;
     }
 
-    #copy-id-btn, #fullscreen-btn, #font-minus-btn, #font-plus-btn, #clear-text-btn {
+    #copy-id-btn, #fullscreen-btn, #font-minus-btn, #font-plus-btn, #clear-text-btn, #share-btn {
       background: #333;
       color: #fff;
       border: none;
@@ -140,6 +140,12 @@
     #clear-text-btn {
       background: #442222;
       color: #ffaaaa;
+    }
+
+    #share-btn {
+      background: #06c755;
+      color: #fff;
+      font-weight: 600;
     }
 
     #font-minus-btn, #font-plus-btn {
@@ -481,10 +487,11 @@
           連線碼：<span id="peer-id-display">產生中...</span>
         </div>
       </div>
-      <div style="display:flex;gap:6px;align-items:center;">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
         <button id="font-minus-btn" onclick="changeFontSize(-0.4)" title="字體縮小">A−</button>
         <button id="font-plus-btn" onclick="changeFontSize(0.4)" title="字體放大">A+</button>
         <button id="clear-text-btn" onclick="clearBigText()" title="清除畫面">清除</button>
+        <button id="share-btn" onclick="shareConnection()" title="分享連線碼給乘客">分享</button>
         <button id="copy-id-btn" onclick="copyPeerId()">複製</button>
         <button id="fullscreen-btn" onclick="toggleFullscreen()">全螢幕</button>
       </div>
@@ -705,6 +712,54 @@
       }
     }
 
+    async function shareConnection() {
+      const id = document.getElementById('peer-id-display').textContent;
+      if (!id || id === '產生中...') {
+        showToast('連線碼還沒產生');
+        return;
+      }
+
+      const baseUrl = window.location.href.split('?')[0].split('#')[0];
+      const inviteUrl = baseUrl + '?code=' + encodeURIComponent(id);
+      const shareText = `開車大字訊息 - 請幫我傳訊息
+
+請用手機瀏覽器打開這個連結：
+${inviteUrl}
+
+打開後選「我是乘客」，連線碼會自動填入，點連線就可以傳文字給我了！
+
+（如果連線碼沒自動填，請手動輸入：${id}）`;
+
+      // 優先使用系統分享（手機可直接選 LINE、訊息等）
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: '開車大字訊息 - 連線碼',
+            text: shareText
+          });
+          showToast('已開啟分享');
+          return;
+        } catch (err) {
+          // 使用者取消分享不處理
+          if (err.name === 'AbortError') return;
+        }
+      }
+
+      // 不支援系統分享時，改為複製整段文字
+      try {
+        await navigator.clipboard.writeText(shareText);
+        showToast('已複製完整邀請文字，可貼到 LINE');
+      } catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = shareText;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('已複製完整邀請文字，可貼到 LINE');
+      }
+    }
+
     function toggleFullscreen() {
       const elem = document.documentElement;
       if (!document.fullscreenElement && !document.webkitFullscreenElement) {
@@ -727,6 +782,15 @@
       isDriver = false;
       document.getElementById('role-select').style.display = 'none';
       document.getElementById('passenger-view').style.display = 'flex';
+
+      // 若網址帶有 ?code=xxx 則自動填入
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        if (code) {
+          document.getElementById('peer-id-input').value = code;
+        }
+      } catch(e) {}
 
       peer = new Peer({
         debug: 1,
@@ -914,6 +978,17 @@
       if (document.visibilityState === 'visible' && isDriver) {
         requestWakeLock();
       }
+    });
+
+    // 若網址有 code 參數，自動進入乘客模式並填入連線碼
+    document.addEventListener('DOMContentLoaded', () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('code')) {
+          // 稍微延遲，確保畫面已就緒
+          setTimeout(() => startAsPassenger(), 100);
+        }
+      } catch(e) {}
     });
   </script>
 </body>
