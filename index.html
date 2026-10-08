@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#000000" />
+  <title>開車大字訊息</title>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      background: #000;
+      color: #fff;
+    }
+
+    /* ========== 選擇角色畫面 ========== */
+    #role-select {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 24px;
+      gap: 28px;
+      background: linear-gradient(160deg, #0a0a0a 0%, #1a1a2e 100%);
+    }
+
+    #role-select h1 {
+      font-size: 1.8rem;
+      text-align: center;
+      margin-bottom: 8px;
+      letter-spacing: 2px;
+    }
+
+    #role-select p {
+      color: #aaa;
+      text-align: center;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      max-width: 320px;
+    }
+
+    .role-btn {
+      width: 100%;
+      max-width: 300px;
+      padding: 22px 20px;
+      font-size: 1.35rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 16px;
+      cursor: pointer;
+      transition: transform 0.15s, opacity 0.15s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .role-btn:active {
+      transform: scale(0.97);
+      opacity: 0.9;
+    }
+
+    .role-btn.driver {
+      background: #00c853;
+      color: #000;
+    }
+
+    .role-btn.passenger {
+      background: #2979ff;
+      color: #fff;
+    }
+
+    .role-btn small {
+      font-size: 0.85rem;
+      font-weight: 400;
+      opacity: 0.85;
+    }
+
+    /* ========== 駕駛端（接收） ========== */
+    #driver-view {
+      display: none;
+      flex-direction: column;
+      height: 100%;
+      background: #000;
+    }
+
+    #driver-header {
+      padding: 12px 16px;
+      background: #111;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.9rem;
+      border-bottom: 1px solid #222;
+      flex-shrink: 0;
+    }
+
+    #driver-status {
+      color: #888;
+    }
+
+    #driver-status.connected {
+      color: #00e676;
+    }
+
+    #peer-id-display {
+      font-family: monospace;
+      font-size: 1.1rem;
+      letter-spacing: 1px;
+      color: #fff;
+      background: #222;
+      padding: 4px 10px;
+      border-radius: 6px;
+      user-select: all;
+    }
+
+    #copy-id-btn, #fullscreen-btn {
+      background: #333;
+      color: #fff;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    #message-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #big-text {
+      font-size: clamp(2.5rem, 12vw, 6rem);
+      font-weight: 700;
+      text-align: center;
+      line-height: 1.25;
+      word-break: break-word;
+      white-space: pre-wrap;
+      max-height: 100%;
+      overflow-y: auto;
+      padding: 10px;
+      color: #fff;
+      text-shadow: 0 0 20px rgba(255,255,255,0.15);
+    }
+
+    #big-text.empty {
+      color: #444;
+      font-size: 1.4rem;
+      font-weight: 400;
+    }
+
+    #driver-footer {
+      padding: 10px 16px;
+      background: #111;
+      text-align: center;
+      font-size: 0.8rem;
+      color: #666;
+      border-top: 1px solid #222;
+      flex-shrink: 0;
+    }
+
+    /* ========== 乘客端（發送） ========== */
+    #passenger-view {
+      display: none;
+      flex-direction: column;
+      height: 100%;
+      background: #0d1117;
+    }
+
+    #passenger-header {
+      padding: 14px 16px;
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      flex-shrink: 0;
+    }
+
+    #passenger-header h2 {
+      font-size: 1.1rem;
+      margin-bottom: 10px;
+    }
+
+    .connect-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    #peer-id-input {
+      flex: 1;
+      padding: 12px 14px;
+      font-size: 1rem;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      background: #0d1117;
+      color: #fff;
+      outline: none;
+    }
+
+    #peer-id-input:focus {
+      border-color: #58a6ff;
+    }
+
+    #connect-btn {
+      padding: 12px 18px;
+      background: #238636;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    #connect-btn:disabled {
+      background: #21262d;
+      color: #8b949e;
+    }
+
+    #passenger-status {
+      margin-top: 8px;
+      font-size: 0.85rem;
+      color: #8b949e;
+    }
+
+    #passenger-status.connected {
+      color: #3fb950;
+    }
+
+    #passenger-status.error {
+      color: #f85149;
+    }
+
+    #input-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      gap: 12px;
+    }
+
+    #message-input {
+      flex: 1;
+      width: 100%;
+      padding: 16px;
+      font-size: 1.25rem;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      background: #0d1117;
+      color: #fff;
+      resize: none;
+      outline: none;
+      line-height: 1.4;
+    }
+
+    #message-input:focus {
+      border-color: #58a6ff;
+    }
+
+    #message-input:disabled {
+      opacity: 0.5;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    #send-btn, #voice-btn, #clear-btn {
+      flex: 1;
+      padding: 16px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+
+    #send-btn {
+      background: #1f6feb;
+      color: #fff;
+      flex: 2;
+    }
+
+    #send-btn:disabled {
+      background: #21262d;
+      color: #8b949e;
+    }
+
+    #voice-btn {
+      background: #21262d;
+      color: #fff;
+    }
+
+    #voice-btn.listening {
+      background: #da3633;
+      animation: pulse 1s infinite;
+    }
+
+    #clear-btn {
+      background: #21262d;
+      color: #8b949e;
+      flex: 0.6;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    /* 快速常用語 */
+    #quick-phrases {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 0 16px 16px;
+    }
+
+    .phrase-btn {
+      padding: 10px 14px;
+      background: #21262d;
+      color: #c9d1d9;
+      border: 1px solid #30363d;
+      border-radius: 20px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    .phrase-btn:active {
+      background: #30363d;
+    }
+
+    /* 提示文字 */
+    .hint {
+      font-size: 0.8rem;
+      color: #666;
+      text-align: center;
+      padding: 8px;
+    }
+
+    /* 複製成功提示 */
+    .toast {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.85);
+      color: #fff;
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-size: 1rem;
+      z-index: 999;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .toast.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 選擇角色 -->
+  <div id="role-select">
+    <h1>開車大字訊息</h1>
+    <p>給聽力不好的駕駛使用<br>乘客輸入文字 → 駕駛手機超大字顯示</p>
+    <button class="role-btn driver" onclick="startAsDriver()">
+      🚗 我是駕駛（接收端）
+      <small>把手機固定在儀表板，顯示超大字</small>
+    </button>
+    <button class="role-btn passenger" onclick="startAsPassenger()">
+      ✍️ 我是乘客（發送端）
+      <small>輸入文字或語音，傳給駕駛</small>
+    </button>
+  </div>
+
+  <!-- 駕駛端 -->
+  <div id="driver-view">
+    <div id="driver-header">
+      <div>
+        <div id="driver-status">等待連線中...</div>
+        <div style="margin-top:6px;">
+          連線碼：<span id="peer-id-display">產生中...</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button id="copy-id-btn" onclick="copyPeerId()">複製</button>
+        <button id="fullscreen-btn" onclick="toggleFullscreen()">全螢幕</button>
+      </div>
+    </div>
+    <div id="message-area">
+      <div id="big-text" class="empty">等待乘客發送訊息...</div>
+    </div>
+    <div id="driver-footer">
+      請把連線碼告訴乘客，或讓乘客掃描／輸入此碼
+    </div>
+  </div>
+
+  <!-- 乘客端 -->
+  <div id="passenger-view">
+    <div id="passenger-header">
+      <h2>發送訊息給駕駛</h2>
+      <div class="connect-row">
+        <input type="text" id="peer-id-input" placeholder="輸入駕駛的連線碼" autocomplete="off" autocorrect="off" autocapitalize="off" />
+        <button id="connect-btn" onclick="connectToDriver()">連線</button>
+      </div>
+      <div id="passenger-status">尚未連線</div>
+    </div>
+    <div id="input-area">
+      <textarea id="message-input" placeholder="在這裡輸入要告訴駕駛的話..." disabled></textarea>
+      <div class="btn-row">
+        <button id="voice-btn" onclick="toggleVoice()" disabled>🎤 語音</button>
+        <button id="send-btn" onclick="sendMessage()" disabled>發送</button>
+        <button id="clear-btn" onclick="clearInput()" disabled>清除</button>
+      </div>
+    </div>
+    <div id="quick-phrases">
+      <button class="phrase-btn" onclick="quickSend('右轉')">右轉</button>
+      <button class="phrase-btn" onclick="quickSend('左轉')">左轉</button>
+      <button class="phrase-btn" onclick="quickSend('直行')">直行</button>
+      <button class="phrase-btn" onclick="quickSend('前方路口')">前方路口</button>
+      <button class="phrase-btn" onclick="quickSend('注意行人')">注意行人</button>
+      <button class="phrase-btn" onclick="quickSend('減速')">減速</button>
+      <button class="phrase-btn" onclick="quickSend('停車')">停車</button>
+      <button class="phrase-btn" onclick="quickSend('小心')">小心</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let peer = null;
+    let conn = null;
+    let isDriver = false;
+    let recognition = null;
+    let isListening = false;
+
+    // ========== 工具 ==========
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 1800);
+    }
+
+    function setStatus(el, text, cls = '') {
+      el.textContent = text;
+      el.className = cls;
+    }
+
+    // ========== 駕駛端 ==========
+    function startAsDriver() {
+      isDriver = true;
+      document.getElementById('role-select').style.display = 'none';
+      document.getElementById('driver-view').style.display = 'flex';
+
+      peer = new Peer({
+        debug: 1,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        }
+      });
+
+      peer.on('open', (id) => {
+        document.getElementById('peer-id-display').textContent = id;
+        setStatus(document.getElementById('driver-status'), '等待乘客連線...', '');
+      });
+
+      peer.on('connection', (connection) => {
+        conn = connection;
+        setupConnection(conn);
+        setStatus(document.getElementById('driver-status'), '已連線 ✓', 'connected');
+        showToast('乘客已連線');
+      });
+
+      peer.on('error', (err) => {
+        console.error(err);
+        setStatus(document.getElementById('driver-status'), '連線錯誤，請重新整理', '');
+      });
+
+      peer.on('disconnected', () => {
+        setStatus(document.getElementById('driver-status'), '已斷線，嘗試重連...', '');
+        peer.reconnect();
+      });
+    }
+
+    function setupConnection(connection) {
+      connection.on('data', (data) => {
+        if (typeof data === 'string') {
+          showBigText(data);
+        }
+      });
+
+      connection.on('close', () => {
+        if (isDriver) {
+          setStatus(document.getElementById('driver-status'), '乘客已斷線', '');
+          showBigText('等待乘客重新連線...', true);
+        }
+      });
+
+      connection.on('error', (err) => {
+        console.error('conn error', err);
+      });
+    }
+
+    function showBigText(text, isEmpty = false) {
+      const el = document.getElementById('big-text');
+      el.textContent = text;
+      el.className = isEmpty ? 'empty' : '';
+      // 自動滾到最上面
+      el.scrollTop = 0;
+    }
+
+    function copyPeerId() {
+      const id = document.getElementById('peer-id-display').textContent;
+      if (id && id !== '產生中...') {
+        navigator.clipboard.writeText(id).then(() => {
+          showToast('已複製連線碼');
+        }).catch(() => {
+          // fallback
+          const ta = document.createElement('textarea');
+          ta.value = id;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showToast('已複製連線碼');
+        });
+      }
+    }
+
+    function toggleFullscreen() {
+      const elem = document.documentElement;
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        if (elem.requestFullscreen) {
+          elem.requestFullscreen();
+        } else if (elem.webkitRequestFullscreen) {
+          elem.webkitRequestFullscreen();
+        }
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        }
+      }
+    }
+
+    // ========== 乘客端 ==========
+    function startAsPassenger() {
+      isDriver = false;
+      document.getElementById('role-select').style.display = 'none';
+      document.getElementById('passenger-view').style.display = 'flex';
+
+      peer = new Peer({
+        debug: 1,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        }
+      });
+
+      peer.on('open', () => {
+        // 乘客端不需要顯示自己的 ID
+      });
+
+      peer.on('error', (err) => {
+        console.error(err);
+        setStatus(document.getElementById('passenger-status'), '錯誤：' + err.type, 'error');
+      });
+    }
+
+    function connectToDriver() {
+      const id = document.getElementById('peer-id-input').value.trim();
+      if (!id) {
+        showToast('請輸入連線碼');
+        return;
+      }
+
+      if (conn) {
+        conn.close();
+      }
+
+      setStatus(document.getElementById('passenger-status'), '連線中...', '');
+      document.getElementById('connect-btn').disabled = true;
+
+      conn = peer.connect(id, { reliable: true });
+
+      conn.on('open', () => {
+        setStatus(document.getElementById('passenger-status'), '已連線 ✓ 可以發送訊息了', 'connected');
+        document.getElementById('message-input').disabled = false;
+        document.getElementById('send-btn').disabled = false;
+        document.getElementById('voice-btn').disabled = false;
+        document.getElementById('clear-btn').disabled = false;
+        document.getElementById('connect-btn').disabled = false;
+        showToast('連線成功');
+        document.getElementById('message-input').focus();
+      });
+
+      conn.on('close', () => {
+        setStatus(document.getElementById('passenger-status'), '連線已斷開', 'error');
+        document.getElementById('message-input').disabled = true;
+        document.getElementById('send-btn').disabled = true;
+        document.getElementById('voice-btn').disabled = true;
+        document.getElementById('clear-btn').disabled = true;
+      });
+
+      conn.on('error', (err) => {
+        console.error(err);
+        setStatus(document.getElementById('passenger-status'), '連線失敗，請確認連線碼', 'error');
+        document.getElementById('connect-btn').disabled = false;
+      });
+    }
+
+    function sendMessage() {
+      const text = document.getElementById('message-input').value.trim();
+      if (!text || !conn || !conn.open) return;
+
+      conn.send(text);
+      showToast('已發送');
+      // 不清空，方便重複修改發送
+      // document.getElementById('message-input').value = '';
+    }
+
+    function clearInput() {
+      document.getElementById('message-input').value = '';
+      document.getElementById('message-input').focus();
+    }
+
+    function quickSend(text) {
+      if (!conn || !conn.open) {
+        showToast('請先連線');
+        return;
+      }
+      conn.send(text);
+      showToast('已發送：' + text);
+    }
+
+    // ========== 語音輸入 ==========
+    function toggleVoice() {
+      if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        showToast('此瀏覽器不支援語音輸入');
+        return;
+      }
+
+      if (isListening) {
+        stopVoice();
+        return;
+      }
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.lang = 'zh-TW';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognition.onstart = () => {
+        isListening = true;
+        document.getElementById('voice-btn').classList.add('listening');
+        document.getElementById('voice-btn').textContent = '🛑 停止';
+        showToast('請開始說話...');
+      };
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        document.getElementById('message-input').value = transcript;
+        // 自動發送
+        if (conn && conn.open) {
+          conn.send(transcript);
+          showToast('語音已發送');
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error(event.error);
+        stopVoice();
+        if (event.error !== 'aborted') {
+          showToast('語音辨識失敗');
+        }
+      };
+
+      recognition.onend = () => {
+        stopVoice();
+      };
+
+      recognition.start();
+    }
+
+    function stopVoice() {
+      isListening = false;
+      document.getElementById('voice-btn').classList.remove('listening');
+      document.getElementById('voice-btn').textContent = '🎤 語音';
+      if (recognition) {
+        try { recognition.stop(); } catch(e) {}
+      }
+    }
+
+    // 按 Enter 發送（手機鍵盤）
+    document.addEventListener('DOMContentLoaded', () => {
+      const input = document.getElementById('message-input');
+      if (input) {
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+          }
+        });
+      }
+    });
+
+    // 防止螢幕休眠（部分瀏覽器）
+    let wakeLock = null;
+    async function requestWakeLock() {
+      if ('wakeLock' in navigator) {
+        try {
+          wakeLock = await navigator.wakeLock.request('screen');
+        } catch (e) {}
+      }
+    }
+
+    // 駕駛端進入後嘗試保持螢幕亮
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && isDriver) {
+        requestWakeLock();
+      }
+    });
+  </script>
+</body>
+</html>
